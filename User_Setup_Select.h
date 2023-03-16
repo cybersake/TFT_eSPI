@@ -78,7 +78,7 @@
 
 //#include <User_Setups/Setup42_ILI9341_ESP32.h>           // Setup file for ESP32 and SPI ILI9341 240x320
 //#include <User_Setups/Setup43_ST7735.h>            // Setup file for ESP8266 & ESP32 configured for my ST7735S 80x160
-//#include <User_Setups/Setup44_TTGO_CameraPlus.h>   // Setup file for ESP32 and TTGO T-CameraPlus ST7789 SPI bus TFT    240x240
+//#include <User_Setups/Setup44_TTGO_CameraPlus.h>   // Setup file for ESP32 and TTGO T-CameraPlus ST7789 SPI bus TFT    240x240 Sake
 //#include <User_Setups/Setup45_TTGO_T_Watch.h>      // Setup file for ESP32 and TTGO T-Watch ST7789 SPI bus TFT  240x240
 //#include <User_Setups/Setup46_GC9A01_ESP32.h>      // Setup file for ESP32 and GC9A01 SPI bus TFT  240x240
 
@@ -271,6 +271,11 @@
 
                               // <<<<<<<<<<<<<<<<<<<<<<<< ADD NEW DRIVER HERE
                               // XYZZY_init.h and XYZZY_rotation.h must also be added in TFT_eSPI.cpp
+							  
+#elif defined (A0039793_DRIVER) //Project Otto driver
+     #include <TFT_Drivers/A0039793_Defines.h>  //Sake deze include hij wel
+     #define  TFT_DRIVER 0x9793                      //Sake waar is  TFT_DRIVER voor? Komt ook in Kconfig voor
+ 
 #elif defined (XYZZY_DRIVER)
      #include "TFT_Drivers/XYZZY_Defines.h"
      #define  TFT_DRIVER 0x0000
