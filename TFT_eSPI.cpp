@@ -11,6 +11,7 @@
 
   Created by Bodmer 2/12/16
   Last update by Bodmer 20/03/20
+  Merged with A0039793 changes 16-3-2023
  ****************************************************/
 
 #include "TFT_eSPI.h"
@@ -21,7 +22,7 @@
   #elif defined(CONFIG_IDF_TARGET_ESP32C3)
     #include "Processors/TFT_eSPI_ESP32_C3.c" // Tested with SPI (8 bit parallel will probably work too!)
   #else
-    #include "Processors/TFT_eSPI_ESP32.c"
+    #include "Processors/TFT_eSPI_ESP32.c"    // This is used for A0039793
   #endif
 #elif defined (ARDUINO_ARCH_ESP8266)
   #include "Processors/TFT_eSPI_ESP8266.c"
@@ -444,6 +445,11 @@ TFT_eSPI::TFT_eSPI(int16_t w, int16_t h)
   // Reset the viewport to the whole screen
   resetViewport();
 
+  // Reset the setWindow() parameters
+  _windowActive = false;
+  _wX0=0; _wY0=0; _wX1=0; _wY1=0;   //How big is the window
+  _wX=0; _wY=0;                     //where we are in the window
+  
   rotation  = 0;
   cursor_y  = cursor_x  = last_cursor_x = bg_cursor_x = 0;
   textfont  = 1;
@@ -711,7 +717,10 @@ void TFT_eSPI::init(uint8_t tc)
 #if   defined (ILI9341_DRIVER) || defined(ILI9341_2_DRIVER) || defined (ILI9342_DRIVER)
     #include "TFT_Drivers/ILI9341_Init.h"
 
-#elif defined (ST7735_DRIVER)
+    #elif defined (A0039793_DRIVER)           //#include A0039793_Init.h Driver for A0039793 display + touch = Project Otto 
+    #include "TFT_Drivers/A0039793_Init.h"
+
+	#elif defined (ST7735_DRIVER)
     tabcolor = tc;
     #include "TFT_Drivers/ST7735_Init.h"
 
@@ -812,6 +821,9 @@ void TFT_eSPI::setRotation(uint8_t m)
     // This loads the driver specific rotation code  <<<<<<<<<<<<<<<<<<<<< ADD NEW DRIVERS TO THE LIST HERE <<<<<<<<<<<<<<<<<<<<<<<
 #if   defined (ILI9341_DRIVER) || defined(ILI9341_2_DRIVER) || defined (ILI9342_DRIVER)
     #include "TFT_Drivers/ILI9341_Rotation.h"
+
+#elif defined (A0039793_DRIVER)
+    #include "TFT_Drivers/A0039793_Rotation.h"	//#includeA0039793_Rotation.h Driver for A0039793 display + touch = Project Otto 
 
 #elif defined (ST7735_DRIVER)
     #include "TFT_Drivers/ST7735_Rotation.h"
@@ -2276,8 +2288,9 @@ void TFT_eSPI::drawCircle(int32_t x0, int32_t y0, int32_t r, uint32_t color)
   if ( r <= 0 ) return;
 
   //begin_tft_write();          // Sprite class can use this function, avoiding begin_tft_write()
+#ifndef A0039793_DRIVER         //drawCircle
   inTransaction = true;
-
+#endif
     int32_t f     = 1 - r;
     int32_t ddF_y = -2 * r;
     int32_t ddF_x = 1;
@@ -2329,9 +2342,10 @@ void TFT_eSPI::drawCircle(int32_t x0, int32_t y0, int32_t r, uint32_t color)
       }
       xs = xe;
     } while (xe < --r);
-
+#ifndef A0039793_DRIVER         //drawCircle
   inTransaction = lockTransaction;
   end_tft_write();              // Does nothing if Sprite class uses this function
+#endif
 }
 
 
@@ -3212,12 +3226,20 @@ void TFT_eSPI::drawChar(int32_t x, int32_t y, uint16_t c, uint32_t color, uint32
     column[5] = 0;
 
     for (int8_t j = 0; j < 8; j++) {
+      #ifdef A0039793_DRIVER      //drawChar GLCD or GFXFF font
+      CS_L;
+      uint16_t address = (yd+j)*TFT_WIDTH + xd;
+      spi.write16(address);
+      #endif
       for (int8_t k = 0; k < 5; k++ ) {
         if (column[k] & mask) {tft_Write_16(color);}
         else {tft_Write_16(bg);}
       }
       mask <<= 1;
       tft_Write_16(bg);
+      #ifdef A0039793_DRIVER      //drawChar GLCD or GFXFF font       
+        CS_H;
+      #endif 
     }
 
     end_tft_write();
@@ -3476,13 +3498,27 @@ void TFT_eSPI::setWindow(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
       TX_FIFO = TFT_RAMWR;
     #endif
   #else
-    SPI_BUSY_CHECK;
-    DC_C; tft_Write_8(TFT_CASET);
-    DC_D; tft_Write_32C(x0, x1);
-    DC_C; tft_Write_8(TFT_PASET);
-    DC_D; tft_Write_32C(y0, y1);
-    DC_C; tft_Write_8(TFT_RAMWR);
-    DC_D;
+    #ifdef A0039793_DRIVER //setWindow()
+    // Store the setWindow() parameters so "Push" can use it
+    _windowActive = true; //signal setWindow is active
+    _wX0=x0;
+    _wY0=y0;
+    _wX1=x1;
+    _wY1=y1;
+    _wX=x0;
+    _wY=y0;
+
+    //Serial.print("setWindow( _wX=");Serial.print(_wX);Serial.print(", _wY=");Serial.print(_wY);
+    //Serial.print(", _wX1=");Serial.print(_wX1);Serial.print(", _wY1=");Serial.print(_wY1);Serial.println(" )");
+	#else
+		SPI_BUSY_CHECK;
+		DC_C; tft_Write_8(TFT_CASET);
+		DC_D; tft_Write_32C(x0, x1);
+		DC_C; tft_Write_8(TFT_PASET);
+		DC_D; tft_Write_32C(y0, y1);
+		DC_C; tft_Write_8(TFT_RAMWR);
+		DC_D;
+	#endif
   #endif // RP2040 SPI
 #endif
   //end_tft_write(); // Must be called after setWindow
@@ -3594,7 +3630,21 @@ void TFT_eSPI::drawPixel(int32_t x, int32_t y, uint32_t color)
   addr_col = 0xFFFF;
 #endif
 
-  begin_tft_write();
+#if (defined (A0039793_DRIVER)) //A0039793 drawPixel(int32_t x, int32_t y, uint32_t color)
+  SPI_BUSY_CHECK;
+  CS_L;
+  //Serial.print("drawPixel( x=");Serial.print(x);Serial.print(", y=");Serial.print(y);Serial.println(" )");
+  uint32_t color32 = (color<<8 | color >>8)<<16 | (color<<8 | color >>8);
+  //Calculate address of pixel
+  uint16_t _address = x+y*TFT_WIDTH;
+  digitalWrite(PIN_HSPI_RS, LOW);     //Select MEM;
+  spi.transfer16(_address);
+  //Write the 16 bit color data
+  spi.writeBytes((uint8_t *)&color32, 2);
+  CS_H;
+#else
+	
+	begin_tft_write();
 
 #if defined (ILI9225_DRIVER)
   if (rotation & 0x01) { transpose(x, y); }
@@ -3776,6 +3826,8 @@ void TFT_eSPI::drawPixel(int32_t x, int32_t y, uint32_t color)
 #endif
 
   end_tft_write();
+
+#endif //#else A0039793_DRIVER
 }
 
 /***************************************************************************************
@@ -3879,9 +3931,11 @@ void TFT_eSPI::pushColors(uint16_t *data, uint32_t len, bool swap)
 void TFT_eSPI::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t color)
 {
   if (_vpOoB) return;
-
+  
+#ifndef A0039793_DRIVER      // drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t color) This hangs up end_tft_write(); in drawpixel
   //begin_tft_write();       // Sprite class can use this function, avoiding begin_tft_write()
   inTransaction = true;
+#endif
 
   //x+= _xDatum;             // Not added here, added by drawPixel & drawFastXLine
   //y+= _yDatum;
@@ -3933,9 +3987,10 @@ void TFT_eSPI::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t
     }
     if (dlen) drawFastHLine(xs, y0, dlen, color);
   }
-
+#ifndef A0039793_DRIVER      //drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t color) This hangs up end_tft_write(); in drawpixel
   inTransaction = lockTransaction;
   end_tft_write();
+#endif
 }
 
 
@@ -4605,6 +4660,11 @@ void TFT_eSPI::drawFastVLine(int32_t x, int32_t y, int32_t h, uint32_t color)
 
   if (h < 1) return;
 
+#ifdef A0039793_DRIVER //drawFastVLine
+  for (int ypixel=y; ypixel<(y+h); ypixel++) {
+    drawPixel(x, ypixel, color);
+  } 
+#else
   begin_tft_write();
 
   setWindow(x, y, x, y + h - 1);
@@ -4612,6 +4672,7 @@ void TFT_eSPI::drawFastVLine(int32_t x, int32_t y, int32_t h, uint32_t color)
   pushBlock(color, h);
 
   end_tft_write();
+#endif
 }
 
 
@@ -5310,6 +5371,11 @@ int16_t TFT_eSPI::drawChar(uint16_t uniCode, int32_t x, int32_t y, uint8_t font)
       uint8_t mask;
       for (int32_t i = 0; i < height; i++) {
         pX = width;
+#ifdef A0039793_DRIVER //drawChar(uint16_t uniCode, int32_t x, int32_t y, uint8_t font)
+        CS_L;
+        uint16_t address = (yd+i)*TFT_WIDTH + xd;
+        spi.write16(address);
+#endif
         for (int32_t k = 0; k < w; k++) {
           line = pgm_read_byte((uint8_t *) (flash_address + w * i + k) );
           mask = 0x80;
@@ -5321,6 +5387,9 @@ int16_t TFT_eSPI::drawChar(uint16_t uniCode, int32_t x, int32_t y, uint8_t font)
           }
         }
         if (pX) {tft_Write_16(textbgcolor);}
+#ifdef A0039793_DRIVER     //drawChar(uint16_t uniCode, int32_t x, int32_t y, uint8_t font)     
+          CS_H;
+#endif 
       }
 
       end_tft_write();

@@ -502,7 +502,8 @@ class TFT_eSPI : public Print { friend class TFT_eSprite; // Sprite class has ac
 
            // Write a set of pixels stored in memory, use setSwapBytes(true/false) function to correct endianess
   void     pushPixels(const void * data_in, uint32_t len);
-
+  void     pushPixelsLine(const void * data_in, uint32_t len);
+  void     pushSwapBytePixelsLine(const void* data_in, uint32_t len);
            // Support for half duplex (bi-directional SDA) SPI bus where MOSI must be switched to input
            #ifdef TFT_SDA_READ
              #if defined (TFT_eSPI_ENABLE_8_BIT_READ)
@@ -860,6 +861,8 @@ class TFT_eSPI : public Print { friend class TFT_eSprite; // Sprite class has ac
            // Temporary  library development function  TODO: remove need for this
   void     pushSwapBytePixels(const void* data_in, uint32_t len);
 
+           // Write one line of a single colour
+  void     pushBlockLine(uint32_t color32, uint32_t len); //for A0039793
            // Same as setAddrWindow but exits with CGRAM in read mode
   void     readAddrWindow(int32_t xs, int32_t ys, int32_t w, int32_t h);
 
@@ -921,7 +924,12 @@ class TFT_eSPI : public Print { friend class TFT_eSprite; // Sprite class has ac
   int32_t  _yHeight;
   bool     _vpDatum;
   bool     _vpOoB;
-
+  
+  //A0039793 setWindow() variables
+  bool     _windowActive;
+  int32_t  _wX0, _wY0, _wX1, _wY1;         // The size of the window
+  int32_t  _wX, _wY;                       // Where we are inside the window
+  
   int32_t  cursor_x, cursor_y, padX;       // Text cursor x,y and padding setting
   int32_t  bg_cursor_x;                    // Background fill cursor
   int32_t  last_cursor_x;                  // Previous text cursor position when fill used
