@@ -10,7 +10,7 @@
 
 // See license in root directory.
 
-// Define a default pressure threshold
+// Define a default pressure threshold todo A0039793 define it in driver config
 #ifndef Z_THRESHOLD
   #define Z_THRESHOLD 350 // Touch pressure threshold for validating touches
 #endif
@@ -29,6 +29,9 @@ inline void TFT_eSPI::begin_touch_read_write(void){
     spi.setFrequency(SPI_TOUCH_FREQUENCY);
   #endif
   SET_BUS_READ_MODE;
+#ifdef A0039793_DRIVER 
+  digitalWrite(PIN_HSPI_RS, HIGH); //Select Control TOUCH/KEYS/BackLight  
+#endif
   T_CS_L;
 }
 
@@ -43,6 +46,9 @@ inline void TFT_eSPI::end_touch_read_write(void){
   #else
     spi.setFrequency(SPI_FREQUENCY);
   #endif
+#ifdef A0039793_DRIVER
+  digitalWrite(PIN_HSPI_RS, LOW); //Select MEM
+#endif
   //SET_BUS_WRITE_MODE;
 }
 
@@ -74,9 +80,11 @@ uint8_t TFT_eSPI::getTouchRaw(uint16_t *x, uint16_t *y){
   tmp = spi.transfer(0);                   // Read first 8 bits
   tmp = tmp <<5;
   tmp |= 0x1f & (spi.transfer(0x90)>>3);   // Read last 8 bits and start new XP conversion
-
+#ifdef A0039793_DRIVER
+  *y = tmp; // On A0039793 this is Y axis 
+#else
   *x = tmp;
-
+#endif
   // Start XP sample request for y position, read 4 times and keep last sample
   spi.transfer(0);                       // Read first 8 bits
   spi.transfer(0x90);                    // Read last 8 bits and start new XP conversion
@@ -89,7 +97,11 @@ uint8_t TFT_eSPI::getTouchRaw(uint16_t *x, uint16_t *y){
   tmp = tmp <<5;
   tmp |= 0x1f & (spi.transfer(0)>>3);    // Read last 8 bits
 
+#ifdef A0039793_DRIVER
+  *x = tmp; // On A0039793 this is X axis 
+#else
   *y = tmp;
+#endif
 
   end_touch_read_write();
 
@@ -168,10 +180,10 @@ uint8_t TFT_eSPI::validTouch(uint16_t *x, uint16_t *y, uint16_t threshold){
 ***************************************************************************************/
 uint8_t TFT_eSPI::getTouch(uint16_t *x, uint16_t *y, uint16_t threshold){
   uint16_t x_tmp, y_tmp;
-  
+#ifndef  A0039793_DRIVER //Why is this needed? 
   if (threshold<20) threshold = 20;
   if (_pressTime > millis()) threshold=20;
-
+#endif
   uint8_t n = 5;
   uint8_t valid = 0;
   while (n--)
@@ -265,6 +277,7 @@ void TFT_eSPI::calibrateTouch(uint16_t *parameters, uint32_t color_fg, uint32_t 
     // user has to get the chance to release
     if(i>0) delay(1000);
 
+    //Take an average of 8 samples
     for(uint8_t j= 0; j<8; j++){
       // Use a lower detect threshold as corners tend to be less sensitive
       while(!validTouch(&x_tmp, &y_tmp, Z_THRESHOLD/2));
