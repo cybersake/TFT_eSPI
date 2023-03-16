@@ -138,6 +138,7 @@
 //#include <User_Setups/Setup209_LilyGo_T_Dongle_S3.h>      // For the LilyGo T-Dongle S3 based ESP32 with ST7735 80 x 160 TFT
 
 //#include <User_Setups/Setup301_BW16_ST7735.h>            // Setup file for Bw16-based boards with ST7735 160 x 80 TFT
+#include <User_Setups/Setup302_ESP32_A0039793.h>         // A0039793 Setup file for Project Otto
 
 //#include <User_Setups/SetupX_Template.h>     // Template file for a setup
 
@@ -151,7 +152,7 @@
 //#include <User_Setups/Dustin_STT7789_ESP32.h>           // Setup file for Dustin Watts PCB with ST7789 240 x 240 on 3.3V adapter board
 //#include <User_Setups/Dustin_ILI9341_ESP32.h>           // Setup file for Dustin Watts PCB with ILI9341
 //#include <User_Setups/ILI9225.h>
-#include <User_Setups/Setup302_ESP32_A0039793.h>         // A0039793 Setup file for Project Otto
+
 
 #endif // USER_SETUP_LOADED
 
