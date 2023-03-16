@@ -200,80 +200,104 @@ void TFT_eSPI::pushPixels(const void* data_in, uint32_t len)
 #elif !defined (SPI_18BIT_DRIVER) && !defined (TFT_PARALLEL_8_BIT) // Most SPI displays
 ////////////////////////////////////////////////////////////////////////////////////////
 
+#ifdef A0039793_DRIVER //New pushblok 
+
+/***************************************************************************************
+** Function name:           pushBlock - for ESP32 for A0039793_DRIVER 
+** Description:             Write a block of pixels of the same colour
+**                          len=number of 16 bit pixels?
+** A0039793 has no hardware for a write window so we do that in software
+***************************************************************************************/
+void TFT_eSPI::pushBlock(uint16_t color, uint32_t len) {
+
+  uint32_t color32 = (color<<8 | color >>8)<<16 | (color<<8 | color >>8);
+  uint32_t w = _wX1-_wX0+1; //number of pixels in one windows line
+
+  //rem = how many pixels fit on the current line before we need a new line address
+  uint32_t rem = _wX1-_wX+1;
+  //Serial.printf("pushBlock() _wX=%d _wY=%d len=%d rem=%d\r\n",_wX,_wY,len, rem);
+ 
+  //write the address
+  SPI_BUSY_CHECK; 
+  CS_L;
+  uint16_t address = _wY*TFT_WIDTH + _wX;
+  spi.write16(address);
+  //Serial.printf("address=%d\r\n",address);
+
+  if (rem > len) {
+    rem = len;
+    _wX = _wX + rem;
+  }
+  else  {
+    //We did fill the line to the end
+    _wX = _wX0; //??We are at the start of a new line now
+    _wY++;      //We are on the next line now
+  }
+  
+  pushBlockLine(color32,rem);
+  len = len - rem;
+  //Serial.printf("_wX=%d _wY=%d len=%d rem=%d\r\n",_wX,_wY,len, rem);  
+  SPI_BUSY_CHECK; 
+  CS_H;  
+
+
+  //push whole lines until len = 0
+  while (len /*&& _wY<(_wY1+1)*/)
+  {
+    SPI_BUSY_CHECK;
+    //write the address
+    CS_L;
+    uint16_t address = _wY*TFT_WIDTH + _wX;
+    spi.write16(address);
+    //Serial.printf("address=%d\r\n",address);    
+    if (len>=w)  {
+      //send one whole line with fast pushBlockLine
+      pushBlockLine(color32, w);
+      len = len - w;
+      _wY++;      //We are on the next line now
+      _wX = _wX0; //We are at the start of a new line now
+    }
+    else {
+      pushBlockLine(color32, len);
+      _wX = _wX0+len;
+      len=0; //We are done
+    }
+    //Serial.printf("_wX=%d _wY=%d len=%d\r\n",_wX,_wY,len);
+    SPI_BUSY_CHECK;
+    CS_H;      
+  }
+  //Serial.printf("pushBlock Done _wX=%d _wY=%d len=%d\r\n",_wX,_wY,len);
+}
+#else
 /***************************************************************************************
 ** Function name:           pushBlock - for ESP32
 ** Description:             Write a block of pixels of the same colour
+**                          len=number of 16 bit pixels?
 ***************************************************************************************/
-/*
 void TFT_eSPI::pushBlock(uint16_t color, uint32_t len){
-
-  uint32_t color32 = (color<<8 | color >>8)<<16 | (color<<8 | color >>8);
-  bool empty = true;
-  volatile uint32_t* spi_w = (volatile uint32_t*)_spi_w;
-  if (len > 31)
-  {
-    *_spi_mosi_dlen =  511;
-    spi_w[0]  = color32;
-    spi_w[1]  = color32;
-    spi_w[2]  = color32;
-    spi_w[3]  = color32;
-    spi_w[4]  = color32;
-    spi_w[5]  = color32;
-    spi_w[6]  = color32;
-    spi_w[7]  = color32;
-    spi_w[8]  = color32;
-    spi_w[9]  = color32;
-    spi_w[10] = color32;
-    spi_w[11] = color32;
-    spi_w[12] = color32;
-    spi_w[13] = color32;
-    spi_w[14] = color32;
-    spi_w[15] = color32;
-    while(len>31)
-    {
-      while ((*_spi_cmd)&SPI_USR);
-      *_spi_cmd = SPI_USR;
-      len -= 32;
-    }
-    empty = false;
-  }
-
-  if (len)
-  {
-    if(empty) {
-      for (uint32_t i=0; i <= len; i+=2) *spi_w++ = color32;
-    }
-    len = (len << 4) - 1;
-    while (*_spi_cmd&SPI_USR);
-    *_spi_mosi_dlen = len;
-    *_spi_cmd = SPI_USR;
-  }
-  while ((*_spi_cmd)&SPI_USR); // Move to later in code to use transmit time usefully?
-}
-//*/
-//*
-void TFT_eSPI::pushBlock(uint16_t color, uint32_t len){
-
+  /* Deze gebruikt hij nu */
   volatile uint32_t* spi_w = _spi_w;
   uint32_t color32 = (color<<8 | color >>8)<<16 | (color<<8 | color >>8);
   uint32_t i = 0;
-  uint32_t rem = len & 0x1F;
+  uint32_t rem = len & 0x1F;  //rem = len % 32
   len =  len - rem;
-
   // Start with partial buffer pixels
   if (rem)
   {
     while (*_spi_cmd&SPI_USR);
-    for (i=0; i < rem; i+=2) *spi_w++ = color32;
-    *_spi_mosi_dlen = (rem << 4) - 1;
+    for (i=0; i < rem; i+=2) //Sake every write = 2 bytes
+      *spi_w++ = color32;   
+    *_spi_mosi_dlen = (rem << 4) - 1;  //The bit length of the data to be written to the device minus one (<< 4 = multiply by 16)
     *_spi_cmd = SPI_USR;
     if (!len) return; //{while (*_spi_cmd&SPI_USR); return; }
-    i = i>>1; while(i++<16) *spi_w++ = color32;
+    i = i>>1; 
+    while(i++<16) 
+      *spi_w++ = color32;
   }
 
   while (*_spi_cmd&SPI_USR);
   if (!rem) while (i++<16) *spi_w++ = color32;
-  *_spi_mosi_dlen =  511;
+  *_spi_mosi_dlen =  511;   //Sake DMA buffer = 512 bytes?
 
   // End with full buffer to maximise useful time for downstream code
   while(len)
@@ -286,12 +310,155 @@ void TFT_eSPI::pushBlock(uint16_t color, uint32_t len){
   // Do not wait here
   //while (*_spi_cmd&SPI_USR);
 }
-//*/
+#endif
+
+//Purpose: pushBlockLine() For A0039793_DRIVER push each line
+void TFT_eSPI::pushBlockLine(uint32_t color32, uint32_t len)
+{
+  volatile uint32_t* spi_w = _spi_w;
+  uint32_t i = 0;
+  uint32_t rem = len & 0x1F;
+  //Serial.printf("pushBlockLine(len=%d)\r\n",len);
+  len =  len - rem;
+  // Start with partial buffer pixels
+  if (rem)
+  {
+    SPI_BUSY_CHECK;
+    for (i=0; i < rem; i+=2)
+    {
+      *spi_w++ = color32;
+    }
+    *_spi_mosi_dlen = (rem << 4) - 1;
+    *_spi_cmd = SPI_USR;
+    if (!len) return;
+   
+    i = i>>1; 
+ 
+    while(i++<16) 
+    {
+      *spi_w++ = color32;
+    }
+  }
+
+  SPI_BUSY_CHECK;
+  //Fill the buffer with 32 bytes (16 pixels)
+  if (!rem) while (i++<16) 
+  {
+    *spi_w++ = color32;
+  }
+  *_spi_mosi_dlen =  511;   //512 bits
+
+  // End with full buffer to maximise useful time for downstream code
+  while(len)
+  {
+    SPI_BUSY_CHECK;
+    *_spi_cmd = SPI_USR;
+    len -= 32;
+  }
+}
+
 /***************************************************************************************
 ** Function name:           pushSwapBytePixels - for ESP32
 ** Description:             Write a sequence of pixels with swapped bytes
 ***************************************************************************************/
 void TFT_eSPI::pushSwapBytePixels(const void* data_in, uint32_t len){
+
+  uint8_t* data = (uint8_t*)data_in;
+  uint32_t color[16];
+#ifdef A0039793_DRIVER  //pushSwapBytePixels() todo has old for() 
+  if (_windowActive)
+  {     
+    //Serial.printf("_windowActive pushSwapBytePixels() len=%d ",len);
+
+    for (uint32_t y=_wY0; y<=_wY1;y++)
+    {
+      SPI_BUSY_CHECK;
+      //write the address
+      CS_L;
+      uint16_t address = y*TFT_WIDTH + _wX0;
+      spi.write16(address);
+      //send one line with DMA
+      pushPixelsLine(data, (uint32_t)((_wX1+1)-_wX0));
+      data +=(_wX1+1)-_wX0;
+      SPI_BUSY_CHECK;
+      CS_H;    
+    }
+    _windowActive = false; //we are done 
+  }
+#else
+  if (len > 31)
+  {
+    WRITE_PERI_REG(SPI_MOSI_DLEN_REG(SPI_PORT), 511);
+    while(len>31)
+    {
+      uint32_t i = 0;
+      while(i<16)
+      {
+        color[i++] = DAT8TO32(data);
+        data+=4;
+      }
+      while (READ_PERI_REG(SPI_CMD_REG(SPI_PORT))&SPI_USR);
+      WRITE_PERI_REG(SPI_W0_REG(SPI_PORT),  color[0]);
+      WRITE_PERI_REG(SPI_W1_REG(SPI_PORT),  color[1]);
+      WRITE_PERI_REG(SPI_W2_REG(SPI_PORT),  color[2]);
+      WRITE_PERI_REG(SPI_W3_REG(SPI_PORT),  color[3]);
+      WRITE_PERI_REG(SPI_W4_REG(SPI_PORT),  color[4]);
+      WRITE_PERI_REG(SPI_W5_REG(SPI_PORT),  color[5]);
+      WRITE_PERI_REG(SPI_W6_REG(SPI_PORT),  color[6]);
+      WRITE_PERI_REG(SPI_W7_REG(SPI_PORT),  color[7]);
+      WRITE_PERI_REG(SPI_W8_REG(SPI_PORT),  color[8]);
+      WRITE_PERI_REG(SPI_W9_REG(SPI_PORT),  color[9]);
+      WRITE_PERI_REG(SPI_W10_REG(SPI_PORT), color[10]);
+      WRITE_PERI_REG(SPI_W11_REG(SPI_PORT), color[11]);
+      WRITE_PERI_REG(SPI_W12_REG(SPI_PORT), color[12]);
+      WRITE_PERI_REG(SPI_W13_REG(SPI_PORT), color[13]);
+      WRITE_PERI_REG(SPI_W14_REG(SPI_PORT), color[14]);
+      WRITE_PERI_REG(SPI_W15_REG(SPI_PORT), color[15]);
+      SET_PERI_REG_MASK(SPI_CMD_REG(SPI_PORT), SPI_USR);
+      len -= 32;
+    }
+  }
+
+  if (len > 15)
+  {
+    uint32_t i = 0;
+    while(i<8)
+    {
+      color[i++] = DAT8TO32(data);
+      data+=4;
+    }
+    while (READ_PERI_REG(SPI_CMD_REG(SPI_PORT))&SPI_USR);
+    WRITE_PERI_REG(SPI_MOSI_DLEN_REG(SPI_PORT), 255);
+    WRITE_PERI_REG(SPI_W0_REG(SPI_PORT),  color[0]);
+    WRITE_PERI_REG(SPI_W1_REG(SPI_PORT),  color[1]);
+    WRITE_PERI_REG(SPI_W2_REG(SPI_PORT),  color[2]);
+    WRITE_PERI_REG(SPI_W3_REG(SPI_PORT),  color[3]);
+    WRITE_PERI_REG(SPI_W4_REG(SPI_PORT),  color[4]);
+    WRITE_PERI_REG(SPI_W5_REG(SPI_PORT),  color[5]);
+    WRITE_PERI_REG(SPI_W6_REG(SPI_PORT),  color[6]);
+    WRITE_PERI_REG(SPI_W7_REG(SPI_PORT),  color[7]);
+    SET_PERI_REG_MASK(SPI_CMD_REG(SPI_PORT), SPI_USR);
+    len -= 16;
+  }
+
+  if (len)
+  {
+    while (READ_PERI_REG(SPI_CMD_REG(SPI_PORT))&SPI_USR);
+    WRITE_PERI_REG(SPI_MOSI_DLEN_REG(SPI_PORT), (len << 4) - 1);
+    for (uint32_t i=0; i <= (len<<1); i+=4) {
+      WRITE_PERI_REG(SPI_W0_REG(SPI_PORT)+i, DAT8TO32(data)); data+=4;
+    }
+    SET_PERI_REG_MASK(SPI_CMD_REG(SPI_PORT), SPI_USR);
+  }
+  while (READ_PERI_REG(SPI_CMD_REG(SPI_PORT))&SPI_USR);
+#endif
+}
+
+/***************************************************************************************
+** Function name:           pushSwapBytePixelsLine - for ESP32 A0039793_DRIVER
+** Description:             Write a line of pixels with swapped bytes
+***************************************************************************************/
+void TFT_eSPI::pushSwapBytePixelsLine(const void* data_in, uint32_t len){
 
   uint8_t* data = (uint8_t*)data_in;
   uint32_t color[16];
@@ -361,7 +528,6 @@ void TFT_eSPI::pushSwapBytePixels(const void* data_in, uint32_t len){
     SET_PERI_REG_MASK(SPI_CMD_REG(SPI_PORT), SPI_USR);
   }
   while (READ_PERI_REG(SPI_CMD_REG(SPI_PORT))&SPI_USR);
-
 }
 
 /***************************************************************************************
@@ -376,7 +542,78 @@ void TFT_eSPI::pushPixels(const void* data_in, uint32_t len){
   }
 
   uint32_t *data = (uint32_t*)data_in;
+#ifdef A0039793_DRIVER //pushPixels(* data_in,len) todo also fix this buggy one
+  if (_windowActive)
+  {     
+    //Serial.print("_windowActive pushPixels()\r\n");
+    //int32_t  _wX0, _wY0, _wX1, _wY1; 
+ 	  //Serial.print("pushPixels( _wX0=");Serial.print(_wX0);Serial.print(", _wY0=");Serial.print( _wY0);
+    //Serial.print(", _wX1=");Serial.print(_wX1);Serial.print(", _wY1=");Serial.print(_wY1);Serial.print(", len=");Serial.print(len);Serial.println(" )");
+    for (uint32_t y=_wY0; y<=_wY1;y++)
+    {
+      //Serial.print(", y=");Serial.print(y);
+      SPI_BUSY_CHECK;
+      //write the address
+      CS_L;
+      uint16_t address = y*TFT_WIDTH + _wX0;
+      spi.write16(address);
 
+      //send one line with DMA
+      pushPixelsLine(data, (uint32_t)((_wX1+1)-_wX0));
+      data +=(_wX1+1)-_wX0;
+      SPI_BUSY_CHECK;
+      CS_H;      
+    }
+    _windowActive = false; //we are done 
+  }
+#else
+  if (len > 31)
+  {
+    WRITE_PERI_REG(SPI_MOSI_DLEN_REG(SPI_PORT), 511);
+    while(len>31)
+    {
+      while (READ_PERI_REG(SPI_CMD_REG(SPI_PORT))&SPI_USR);
+      WRITE_PERI_REG(SPI_W0_REG(SPI_PORT),  *data++);
+      WRITE_PERI_REG(SPI_W1_REG(SPI_PORT),  *data++);
+      WRITE_PERI_REG(SPI_W2_REG(SPI_PORT),  *data++);
+      WRITE_PERI_REG(SPI_W3_REG(SPI_PORT),  *data++);
+      WRITE_PERI_REG(SPI_W4_REG(SPI_PORT),  *data++);
+      WRITE_PERI_REG(SPI_W5_REG(SPI_PORT),  *data++);
+      WRITE_PERI_REG(SPI_W6_REG(SPI_PORT),  *data++);
+      WRITE_PERI_REG(SPI_W7_REG(SPI_PORT),  *data++);
+      WRITE_PERI_REG(SPI_W8_REG(SPI_PORT),  *data++);
+      WRITE_PERI_REG(SPI_W9_REG(SPI_PORT),  *data++);
+      WRITE_PERI_REG(SPI_W10_REG(SPI_PORT), *data++);
+      WRITE_PERI_REG(SPI_W11_REG(SPI_PORT), *data++);
+      WRITE_PERI_REG(SPI_W12_REG(SPI_PORT), *data++);
+      WRITE_PERI_REG(SPI_W13_REG(SPI_PORT), *data++);
+      WRITE_PERI_REG(SPI_W14_REG(SPI_PORT), *data++);
+      WRITE_PERI_REG(SPI_W15_REG(SPI_PORT), *data++);
+      SET_PERI_REG_MASK(SPI_CMD_REG(SPI_PORT), SPI_USR);
+      len -= 32;
+    }
+  }
+
+  if (len)
+  {
+    while (READ_PERI_REG(SPI_CMD_REG(SPI_PORT))&SPI_USR);
+    WRITE_PERI_REG(SPI_MOSI_DLEN_REG(SPI_PORT), (len << 4) - 1);
+    for (uint32_t i=0; i <= (len<<1); i+=4) WRITE_PERI_REG((SPI_W0_REG(SPI_PORT) + i), *data++);
+    SET_PERI_REG_MASK(SPI_CMD_REG(SPI_PORT), SPI_USR);
+  }
+  while (READ_PERI_REG(SPI_CMD_REG(SPI_PORT))&SPI_USR);
+#endif
+}
+
+
+/***************************************************************************************
+** Function name:           pushPixelsLine - for ESP32 A0039793_DRIVER 
+** Description:             Write a sequence of pixels
+***************************************************************************************/
+void TFT_eSPI::pushPixelsLine(const void* data_in, uint32_t len){
+
+  uint32_t *data = (uint32_t*)data_in;
+  
   if (len > 31)
   {
     WRITE_PERI_REG(SPI_MOSI_DLEN_REG(SPI_PORT), 511);
