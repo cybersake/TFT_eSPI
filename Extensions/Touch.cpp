@@ -10,7 +10,7 @@
 
 // See license in root directory.
 
-// Define a default pressure threshold todo A0039793 define it in driver config
+// Define a default pressure threshold (if not defined in the user_setup for driver)
 #ifndef Z_THRESHOLD
   #define Z_THRESHOLD 350 // Touch pressure threshold for validating touches
 #endif

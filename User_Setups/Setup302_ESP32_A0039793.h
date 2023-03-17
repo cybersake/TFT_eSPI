@@ -165,6 +165,7 @@
 
 //Chip select pin (T_CS) of touch screen
 #define TOUCH_CS 26       // A0039793 shares the same chip select for the display and touch screen 
+#define Z_THRESHOLD 1600  // Used in calibrateTouch() for the Threshold of validTouch() Note: it is used: Z_THRESHOLD/2
 
 //#define TFT_WR PIN_D2       // Write strobe for modified Raspberry Pi TFT only
 
