@@ -7,15 +7,19 @@ TFT_eSPI tft = TFT_eSPI();
 
 void setup(void) {
   uint16_t calibrationData[5];
-  uint8_t calDataOK = 0;
+  bool calDataOK = false;
 
   Serial.begin(115200);
   Serial.println("starting");
 
   tft.init();
 
-  tft.setRotation(3);
-  tft.fillScreen((0xFFFF));
+  tft.setRotation(0);           //adjust this to your display position
+  tft.fillScreen((TFT_WHITE));
+
+  //This output should match your display resolution
+  Serial.printf("display pixel width=%d\r\n",tft.width());
+  Serial.printf("display pixel height=%d\r\n",tft.height());
 
   tft.setCursor(20, 0, 2);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);  tft.setTextSize(1);
@@ -29,21 +33,24 @@ void setup(void) {
     SPIFFS.begin();
   }
 
-  // check if calibration file exists
+  // check if calibration file exists, and read it
   if (SPIFFS.exists(CALIBRATION_FILE)) {
     File f = SPIFFS.open(CALIBRATION_FILE, "r");
     if (f) {
-      if (f.readBytes((char *)calibrationData, 14) == 14)
-        calDataOK = 1;
+      if (f.readBytes((char *)calibrationData, 14) == 14) {
+        calDataOK = true;
+      }
       f.close();
     }
   }
+
   if (calDataOK) {
-    // calibration data valid
+    Serial.println("calibration data valid");
     tft.setTouch(calibrationData);
-  } else {
-    // data not valid. recalibrate
-    tft.calibrateTouch(calibrationData, TFT_WHITE, TFT_RED, 15);
+  } 
+  else {
+    Serial.println("data not valid. recalibrate");
+    tft.calibrateTouch(calibrationData, TFT_WHITE, TFT_RED, 15); //15 = size of the calibration square
     // store data
     File f = SPIFFS.open(CALIBRATION_FILE, "w");
     if (f) {
@@ -52,14 +59,15 @@ void setup(void) {
     }
   }
 
-  tft.fillScreen((0xFFFF));
+  tft.fillScreen((TFT_WHITE));
 
 }
 
 void loop() {
   uint16_t x, y;
   static uint16_t color;
-
+  
+  //Display the coordinates and draw a colored pixel at the detected position
   if (tft.getTouch(&x, &y)) {
 
     tft.setCursor(5, 5, 2);
