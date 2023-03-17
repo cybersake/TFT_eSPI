@@ -273,6 +273,11 @@
      #define  TFT_DRIVER 0x9793
                               // <<<<<<<<<<<<<<<<<<<<<<<< ADD NEW DRIVER HERE
                               // XYZZY_init.h and XYZZY_rotation.h must also be added in TFT_eSPI.cpp
+							  
+#elif defined (A0039793_DRIVER) //Project Otto driver
+     #include <TFT_Drivers/A0039793_Defines.h>  //Sake deze include hij wel
+     #define  TFT_DRIVER 0x9793                      //Sake waar is  TFT_DRIVER voor? Komt ook in Kconfig voor
+ 
 #elif defined (XYZZY_DRIVER)
      #include "TFT_Drivers/XYZZY_Defines.h"
      #define  TFT_DRIVER 0x0000
